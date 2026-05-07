@@ -25,11 +25,9 @@ import {
   faLocationDot,
   faLeaf,
   faXmark,
-  faTriangleExclamation,
   faUpDownLeftRight,
   faPalette,
   faLightbulb,
-  faRoute,
 } from '@fortawesome/free-solid-svg-icons';
 import {
   faFile,
@@ -37,6 +35,7 @@ import {
 } from '@fortawesome/free-regular-svg-icons';
 import Map, { FLOW_ENTRIES, getArcMidpoint, type FlowEntry } from './Map';
 import ProcessingPage from './ProcessingPage';
+import StreamDetailPanel, { computeRisk } from './StreamDetailPanel';
 
 type PageKey = 'map' | 'processing';
 
@@ -71,37 +70,36 @@ function App() {
   const [activePage,       setActivePage]       = useState<PageKey>('map');
   const [mapRef,           setMapRef]           = useState<LeafletMap | null>(null);
   const [selectedMaterial, setSelectedMaterial] = useState<string | null>(null);
-  const [tooltip,          setTooltip]          = useState<{ flow: FlowEntry; x: number; y: number } | null>(null);
+  const [selectedFlow,     setSelectedFlow]     = useState<FlowEntry | null>(null);
 
   const handleMapReady = useCallback((m: LeafletMap) => setMapRef(m), []);
 
-  const handleFlowClick = useCallback((flow: FlowEntry, pixel: { x: number; y: number }) => {
-    setSelectedMaterial(prev => {
-      const next = prev === flow.material ? null : flow.material;
-      setTooltip(next ? { flow, x: pixel.x, y: pixel.y } : null);
-      return next;
-    });
-  }, []);
+  const handleFlowClick = useCallback((flow: FlowEntry) => {
+    const isToggleOff = selectedFlow?.material === flow.material;
+    setSelectedMaterial(isToggleOff ? null : flow.material);
+    setSelectedFlow(isToggleOff ? null : flow);
+  }, [selectedFlow]);
 
   const handleMapClick = useCallback(() => {
     setSelectedMaterial(null);
-    setTooltip(null);
+    setSelectedFlow(null);
   }, []);
 
   const handleLegendClick = useCallback((material: string) => {
     const next = selectedMaterial === material ? null : material;
     setSelectedMaterial(next);
 
-    if (!next || !mapRef) {
-      setTooltip(null);
+    if (!next) {
+      setSelectedFlow(null);
       return;
     }
 
-    const mid = getArcMidpoint(material);
-    if (mid) {
-      const pixel = mapRef.latLngToContainerPoint(mid as [number, number]);
-      const flow = FLOW_ENTRIES.find(f => f.material === material);
-      if (flow) setTooltip({ flow, x: pixel.x, y: pixel.y });
+    const flow = FLOW_ENTRIES.find(f => f.material === material);
+    setSelectedFlow(flow ?? null);
+
+    if (mapRef) {
+      const mid = getArcMidpoint(material);
+      if (mid) mapRef.panTo(mid as [number, number]);
     }
   }, [selectedMaterial, mapRef]);
 
@@ -216,38 +214,16 @@ function App() {
                 {/* Bottom-left branding */}
                 <div className="map-overlay geo-logo">geoFluxus</div>
 
-                {/* Flow tooltip */}
-                {tooltip && (
-                  <div
-                    className="flow-tooltip"
-                    style={{ left: tooltip.x + 16, top: tooltip.y - 70 }}
-                  >
-                    <div className="flow-tooltip-header">
-                      <span className="stream-dot" style={{ background: tooltip.flow.color }} />
-                      <span className="flow-tooltip-material">{tooltip.flow.material}</span>
-                    </div>
-                    <div className="flow-tooltip-route">
-                      {tooltip.flow.from} &rsaquo; {tooltip.flow.to}
-                    </div>
-                    <div className="flow-tooltip-stats">
-                      <div className="flow-tooltip-stat">
-                        <FontAwesomeIcon icon={faBoxesStacked} />
-                        <span>{tooltip.flow.tonnage} t</span>
-                      </div>
-                      <div className="flow-tooltip-stat">
-                        <FontAwesomeIcon icon={faRoute} />
-                        <span>{tooltip.flow.distance} km</span>
-                      </div>
-                      <div className="flow-tooltip-stat">
-                        <FontAwesomeIcon icon={faTruck} />
-                        <span>{tooltip.flow.count}</span>
-                      </div>
-                    </div>
-                  </div>
+                {/* Stream detail panel (replaces legend when a flow is selected) */}
+                {selectedFlow && (
+                  <StreamDetailPanel
+                    flow={selectedFlow}
+                    onClose={() => { setSelectedFlow(null); setSelectedMaterial(null); }}
+                  />
                 )}
 
                 {/* Right legend panel */}
-                <div className="legend-panel">
+                <div className={`legend-panel${selectedFlow ? ' legend-panel--hidden' : ''}`}>
                   {/* Totals */}
                   <section className="legend-section">
                     <h3 className="legend-title">Totals</h3>
@@ -286,52 +262,63 @@ function App() {
                   {/* Largest streams */}
                   <section className="legend-section">
                     <h3 className="legend-title">Largest streams</h3>
-                    {largestStreams.map(flow => (
-                      <div
-                        key={flow.material}
-                        className={[
-                          'stream-item',
-                          selectedMaterial === flow.material  ? 'stream-item--active'  : '',
-                          selectedMaterial && selectedMaterial !== flow.material ? 'stream-item--dimmed' : '',
-                        ].join(' ')}
-                        onClick={() => handleLegendClick(flow.material)}
-                      >
-                        <span className="stream-dot" style={{ background: flow.color }} />
-                        <div className="stream-info">
-                          <span className="stream-material">{flow.material}</span>
-                          <span className="stream-route">{flow.from} › {flow.to}</span>
+                    {largestStreams.map(flow => {
+                      const risk = computeRisk(flow);
+                      return (
+                        <div
+                          key={flow.material}
+                          className={[
+                            'stream-item',
+                            selectedMaterial === flow.material  ? 'stream-item--active'  : '',
+                            selectedMaterial && selectedMaterial !== flow.material ? 'stream-item--dimmed' : '',
+                          ].join(' ')}
+                          onClick={() => handleLegendClick(flow.material)}
+                        >
+                          <span className="stream-dot" style={{ background: flow.color }} />
+                          <div className="stream-info">
+                            <span className="stream-material">{flow.material}</span>
+                            <span className="stream-route">{flow.from} › {flow.to}</span>
+                          </div>
+                          <div className="stream-value">
+                            <span className={`stream-risk-chip stream-risk-chip--${risk.level.toLowerCase()}`}>
+                              {risk.level}
+                            </span>
+                            {flow.tonnage} t
+                          </div>
                         </div>
-                        <div className="stream-value">
-                          {flow.material === 'Concrete' && (
-                            <FontAwesomeIcon icon={faTriangleExclamation} className="stream-badge" />
-                          )}
-                          {flow.tonnage} t
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </section>
 
                   {/* Longest distance */}
                   <section className="legend-section">
                     <h3 className="legend-title">Longest distance</h3>
-                    {longestDistance.map(flow => (
-                      <div
-                        key={flow.material}
-                        className={[
-                          'stream-item',
-                          selectedMaterial === flow.material  ? 'stream-item--active'  : '',
-                          selectedMaterial && selectedMaterial !== flow.material ? 'stream-item--dimmed' : '',
-                        ].join(' ')}
-                        onClick={() => handleLegendClick(flow.material)}
-                      >
-                        <span className="stream-dot" style={{ background: flow.color }} />
-                        <div className="stream-info">
-                          <span className="stream-material">{flow.material}</span>
-                          <span className="stream-route">{flow.from} › {flow.to}</span>
+                    {longestDistance.map(flow => {
+                      const risk = computeRisk(flow);
+                      return (
+                        <div
+                          key={flow.material}
+                          className={[
+                            'stream-item',
+                            selectedMaterial === flow.material  ? 'stream-item--active'  : '',
+                            selectedMaterial && selectedMaterial !== flow.material ? 'stream-item--dimmed' : '',
+                          ].join(' ')}
+                          onClick={() => handleLegendClick(flow.material)}
+                        >
+                          <span className="stream-dot" style={{ background: flow.color }} />
+                          <div className="stream-info">
+                            <span className="stream-material">{flow.material}</span>
+                            <span className="stream-route">{flow.from} › {flow.to}</span>
+                          </div>
+                          <div className="stream-value">
+                            <span className={`stream-risk-chip stream-risk-chip--${risk.level.toLowerCase()}`}>
+                              {risk.level}
+                            </span>
+                            {flow.distance} km
+                          </div>
                         </div>
-                        <span className="stream-value">{flow.distance} km</span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </section>
                 </div>
               </div>

@@ -7,6 +7,8 @@ import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({ iconUrl: icon, shadowUrl: iconShadow });
 
+export type ProcessingMethodKey = 'hergebruiken' | 'recycling' | 'terugwinning' | 'verwijderen' | 'onbekend';
+
 export interface FlowEntry {
   material: string;
   color: string;
@@ -15,15 +17,57 @@ export interface FlowEntry {
   tonnage: number;
   distance: number;
   count: number;
+  composition: string[];
+  wasteCode: string;
+  isDangerous: boolean;
+  processingMethod: ProcessingMethodKey;
+  dataSource: string;
+  processorType: string;
 }
 
 export const FLOW_ENTRIES: FlowEntry[] = [
-  { material: 'Concrete',  color: '#8B7355', from: 'Nijmegen', to: 'PreZero',    tonnage: 182, distance: 70,  count: 11 },
-  { material: 'Wood',      color: '#E8956D', from: 'Nijmegen', to: 'Avalex',     tonnage: 176, distance: 58,  count: 8  },
-  { material: 'Batteries', color: '#6EC26B', from: 'Nijmegen', to: 'Renewi.B.V', tonnage: 143, distance: 78,  count: 15 },
-  { material: 'Metals',    color: '#DC3545', from: 'Strijen',  to: 'Renewi.B.V', tonnage: 111, distance: 123, count: 7  },
-  { material: 'Soil',      color: '#2B4B8A', from: 'Nijmegen', to: 'Avalex',     tonnage: 98,  distance: 283, count: 4  },
-  { material: 'Plastic',   color: '#4A90E2', from: 'Nijmegen', to: 'PreZero',    tonnage: 85,  distance: 95,  count: 12 },
+  {
+    material: 'Concrete', color: '#8B7355', from: 'Nijmegen', to: 'PreZero',
+    tonnage: 182, distance: 70, count: 11,
+    composition: ['Brokken', 'Gewapend beton', 'Funderingsmateriaal', 'Betongranulaat'],
+    wasteCode: '170101', isDangerous: false, processingMethod: 'recycling',
+    dataSource: 'EVOA 2023 Q1–Q4', processorType: 'Concrete recycling facility',
+  },
+  {
+    material: 'Wood', color: '#E8956D', from: 'Nijmegen', to: 'Avalex',
+    tonnage: 176, distance: 58, count: 8,
+    composition: ['Hout A', 'Hout B', 'Sloopafval', 'Verduurzaamd hout'],
+    wasteCode: '170201', isDangerous: false, processingMethod: 'terugwinning',
+    dataSource: 'EVOA 2023 Q1–Q4', processorType: 'Energy recovery facility',
+  },
+  {
+    material: 'Batteries', color: '#6EC26B', from: 'Nijmegen', to: 'Renewi.B.V',
+    tonnage: 143, distance: 78, count: 15,
+    composition: ['Li-ion', 'Lood-accu', 'NiMH', 'Alkaline'],
+    wasteCode: '160601', isDangerous: true, processingMethod: 'recycling',
+    dataSource: 'REACH-verklaring 2023', processorType: 'Specialized hazardous waste processor',
+  },
+  {
+    material: 'Metals', color: '#DC3545', from: 'Strijen', to: 'Renewi.B.V',
+    tonnage: 111, distance: 123, count: 7,
+    composition: ['Koper', 'Aluminium', 'Staal', 'Ijzer'],
+    wasteCode: '170407', isDangerous: false, processingMethod: 'hergebruiken',
+    dataSource: 'EVOA 2023 Q2–Q3', processorType: 'Metal recovery and reuse facility',
+  },
+  {
+    material: 'Soil', color: '#2B4B8A', from: 'Nijmegen', to: 'Avalex',
+    tonnage: 98, distance: 283, count: 4,
+    composition: ['Verontreinigde grond', 'Puin', 'Asfalt', 'Klei'],
+    wasteCode: '170504', isDangerous: true, processingMethod: 'verwijderen',
+    dataSource: 'BSAB-registratie 2023', processorType: 'Soil treatment and disposal facility',
+  },
+  {
+    material: 'Plastic', color: '#4A90E2', from: 'Nijmegen', to: 'PreZero',
+    tonnage: 85, distance: 95, count: 12,
+    composition: ['PE', 'PP', 'PVC', 'Gemengd plastic'],
+    wasteCode: '170203', isDangerous: false, processingMethod: 'onbekend',
+    dataSource: 'EVOA 2023 Q1–Q4', processorType: 'Plastic sorting facility',
+  },
 ];
 
 function makeArc(
